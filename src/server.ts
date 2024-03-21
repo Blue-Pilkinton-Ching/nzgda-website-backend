@@ -11,8 +11,9 @@ app.listen(PORT, () => {
 
 app.use(cors())
 app.use(express.json())
+app.use(express.text())
 
-app.use(dashboard)
+app.use('/dashboard', dashboard)
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Heihei website api backend!')
