@@ -1,6 +1,6 @@
 import express, { Request, Response, Router } from 'express'
 import cors from 'cors'
-import privilege from './authenticate'
+import { dashboard } from './routes/dashboard'
 
 const app = express()
 const PORT = process.env.PORT || 3002
@@ -10,18 +10,10 @@ app.listen(PORT, () => {
 })
 
 app.use(cors())
+app.use(express.json())
 
-const dashboard = Router()
-dashboard.use(privilege)
-
-app.use('/dashboard', dashboard)
-
-dashboard.get('/', (req: Request, res: Response) => {
-  res.send('Heihei dashboard api backend!')
-})
+app.use(dashboard)
 
 app.get('/', (req: Request, res: Response) => {
   res.send('Heihei website api backend!')
 })
-
-export { dashboard }

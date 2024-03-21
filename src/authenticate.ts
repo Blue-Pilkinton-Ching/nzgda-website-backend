@@ -9,7 +9,10 @@ export default async function privilege(
   next: () => void
 ) {
   if (req.headers.authorization == undefined) {
-    res.send('Authorization header is missing')
+    res
+      .status(401)
+      .setHeader('privilege', 'error')
+      .send('Authorization header is missing')
     return
   }
 
@@ -20,7 +23,7 @@ export default async function privilege(
       .auth()
       .verifyIdToken(req.headers.authorization.split('Bearer ')[1])
   } catch (error) {
-    res.status(401).send('Invalid token')
+    res.status(401).send('Invalid token').setHeader('privilege', 'error')
     return
   }
 
@@ -30,7 +33,10 @@ export default async function privilege(
 
   if (adminData == undefined) {
     console.error('adminData is undefined')
-    res.status(500).send('Server Error is undefined')
+    res
+      .status(500)
+      .setHeader('privilege', 'error')
+      .send('Server Error is undefined')
     return
   }
 
@@ -39,14 +45,12 @@ export default async function privilege(
 
   if (a) {
     req.headers['privilege'] = 'admin'
-    return res
-  }
-
-  if (p) {
+    next()
+  } else if (p) {
     req.headers['privilege'] = 'privileged'
-    return res
+    next()
+  } else {
+    req.headers['privilege'] = 'noprivilege'
+    next()
   }
-
-  req.headers['privilege'] = 'noprivilege'
-  next()
 }
