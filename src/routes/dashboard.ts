@@ -1,5 +1,7 @@
 import {
   AdminDashboard,
+  Game,
+  GameListItem,
   GamesList,
   User,
   UserPrivilege,
@@ -254,6 +256,199 @@ dashboard.delete('/partners', async (req, res) => {
       }
 
       await updateData()
+
+      statusCode = 200
+    } catch (error) {
+      console.error(error)
+      statusCode = 500
+    }
+  } else {
+    statusCode = 401
+  }
+
+  res.status(statusCode).json({})
+})
+
+// Add Game
+
+dashboard.post('/add', async (req, res) => {
+  const privilege = req.headers['privilege'] as UserPrivilege
+
+  const game = (await JSON.parse(req.body)) as Game
+
+  let statusCode = 500
+
+  if (privilege === 'admin' || privilege === 'privileged') {
+    const latestID = (
+      await admin.firestore().doc('gameslist/latest-id').get()
+    ).data() as { id: number }
+
+    latestID.id += 1
+
+    try {
+      await admin.firestore().doc('gameslist/latest-id').set({ latestID })
+    } catch (error) {
+      console.error(error)
+      statusCode = 500
+      res.status(statusCode).json({})
+    }
+
+    const id = latestID.id
+
+    if (privilege === 'admin') {
+      try {
+        const func1 = async () => {
+          // File uploads here
+
+          const d = (
+            await admin.firestore().doc('gameslist/BrHoO8yuD3JdDFo8F2BC').get()
+          ).data() as GamesList
+
+          d.data.push({
+            app: game.displayAppBadge,
+            id,
+            hidden: false,
+            exclude: game.exclude || '',
+            name: game.name,
+            partner: game.partner,
+            thumbnail: '',
+            featured: false,
+            // banner: "NEED TO IMPLEMENT",
+          })
+
+          await admin.firestore().doc(`gameslist/BrHoO8yuD3JdDFo8F2BC`).set(d)
+        }
+
+        const func2 = async () => {
+          admin
+            .firestore()
+            .doc(`games/${id}`)
+            .set({ ...game, id: id })
+        }
+
+        await Promise.all([func1(), func2()])
+
+        statusCode = 200
+      } catch (error) {
+        console.error(error)
+        statusCode = 500
+      }
+    }
+  } else {
+    statusCode = 401
+  }
+
+  res.status(statusCode).json({})
+})
+
+// Game Settings
+
+dashboard.patch('/:gameID', async (req, res) => {
+  const privilege = req.headers['privilege'] as UserPrivilege
+
+  const gameChanges = await JSON.parse(req.body)
+
+  let statusCode = 500
+
+  if (privilege === 'admin') {
+    try {
+      const query = admin
+        .firestore()
+        .collection('games')
+        .where('id', '==', Number(req.params.gameID))
+        .limit(1)
+      const query2 = admin.firestore().collection('gameslist').limit(1)
+
+      const updateGame1 = async () => {
+        await (await query.get()).docs[0].ref.update(gameChanges)
+      }
+      const updateGame2 = async () => {
+        const doc = (await query2.get()).docs[0]
+        const data = doc.data() as { data: GameListItem[] }
+
+        const item =
+          data.data[
+            data.data.findIndex((item) => item.id === Number(req.params.gameID))
+          ]
+
+        item.name = gameChanges.name
+        item.partner = gameChanges.partner
+        item.exclude = gameChanges.exclude
+        item.app = gameChanges.displayAppBadge
+
+        await doc.ref.set(data)
+      }
+
+      await Promise.all([updateGame1(), updateGame2()])
+
+      statusCode = 200
+    } catch (error) {
+      console.error(error)
+      statusCode = 500
+    }
+  } else {
+    statusCode = 401
+  }
+
+  res.status(statusCode).json({})
+})
+
+dashboard.patch('/:gameID/visibility', async (req, res) => {
+  const privilege = req.headers['privilege'] as UserPrivilege
+
+  const hidden = (await JSON.parse(req.body)).hidden as boolean
+
+  let statusCode = 500
+
+  if (privilege === 'admin') {
+    try {
+      const query = admin.firestore().collection('gameslist').limit(1)
+
+      const doc = (await query.get()).docs[0]
+      const data = doc.data() as { data: GameListItem[] }
+
+      data.data[
+        data.data.findIndex((item) => item.id === Number(req.params.gameID))
+      ].hidden = hidden
+
+      await doc.ref.set(data)
+
+      statusCode = 200
+    } catch (error) {
+      console.error(error)
+      statusCode = 500
+    }
+  } else {
+    statusCode = 401
+  }
+
+  res.status(statusCode).json({})
+})
+
+dashboard.patch('/:gameID/feature', async (req, res) => {
+  const privilege = req.headers['privilege'] as UserPrivilege
+
+  const featured = (await JSON.parse(req.body)).featured as boolean
+
+  let statusCode = 500
+
+  if (privilege === 'admin') {
+    try {
+      const query = admin.firestore().collection('gameslist').limit(1)
+
+      const doc = (await query.get()).docs[0]
+      const data = doc.data() as { data: GameListItem[] }
+
+      data.data.map((x) => {
+        if (x.id === Number(req.params.gameID)) {
+          x.featured = featured
+        } else {
+          x.featured = false
+        }
+        return x
+      })
+
+      await doc.ref.set(data)
 
       statusCode = 200
     } catch (error) {
