@@ -13,6 +13,9 @@ import { Router } from 'express'
 
 import { multer } from './../server'
 
+import upload from '../util/uploadToS3'
+import { error } from 'console'
+
 export const dashboard = Router()
 dashboard.use(privilege)
 
@@ -276,9 +279,14 @@ dashboard.delete('/partners', async (req, res) => {
 dashboard.post('/add', multer.single('thumbnail'), async (req, res) => {
   const privilege = req.headers['privilege'] as UserPrivilege
 
-  const game = (await JSON.parse(req.body)) as Game
+  const game = JSON.parse(req.body.data) as Game
 
   let statusCode = 500
+
+  if (req.file == undefined) {
+    res.status(400).json({})
+    return
+  }
 
   if (privilege === 'admin' || privilege === 'privileged') {
     const latestID = (
@@ -288,7 +296,10 @@ dashboard.post('/add', multer.single('thumbnail'), async (req, res) => {
     latestID.id += 1
 
     try {
-      await admin.firestore().doc('gameslist/latest-id').set({ latestID })
+      await admin
+        .firestore()
+        .doc('gameslist/latest-id')
+        .set({ id: latestID.id })
     } catch (error) {
       console.error(error)
       statusCode = 500
@@ -300,7 +311,17 @@ dashboard.post('/add', multer.single('thumbnail'), async (req, res) => {
     if (privilege === 'admin') {
       try {
         const func1 = async () => {
-          // File uploads here
+          let thumbnailURL = ''
+          try {
+            thumbnailURL = (await upload(
+              'heihei-game-content',
+              `${id}/thumbnail.png`,
+              req.file?.path as string
+            )) as string
+          } catch (error) {
+            console.error('Error uploading thumbnail')
+            throw error
+          }
 
           const d = (
             await admin.firestore().doc('gameslist/BrHoO8yuD3JdDFo8F2BC').get()
@@ -313,12 +334,12 @@ dashboard.post('/add', multer.single('thumbnail'), async (req, res) => {
             exclude: game.exclude || '',
             name: game.name,
             partner: game.partner,
-            thumbnail: '',
+            thumbnail: thumbnailURL,
             featured: false,
             // banner: "NEED TO IMPLEMENT",
           })
 
-          //   await admin.firestore().doc(`gameslist/BrHoO8yuD3JdDFo8F2BC`).set(d)
+          await admin.firestore().doc(`gameslist/BrHoO8yuD3JdDFo8F2BC`).set(d)
         }
 
         const func2 = async () => {

@@ -71,3 +71,8 @@ export interface GamesList {
   data: GameListItem[]
   partners: Partner[]
 }
+
+export interface s3Object {
+  Key: string
+  filepath: string
+}

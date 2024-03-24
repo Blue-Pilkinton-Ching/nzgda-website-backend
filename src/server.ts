@@ -11,7 +11,6 @@ app.use(express.json())
 app.use(express.text())
 app.use(express.urlencoded({ extended: true }))
 
-// const storage = multer.memoryStorage() // Use memory storage for simplicity
 const upload = multer({ dest: 'uploads/' })
 
 export { upload as multer }

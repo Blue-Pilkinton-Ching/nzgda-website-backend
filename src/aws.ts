@@ -1,10 +1,13 @@
-import * as AWS from 'aws-sdk'
+import { S3 } from '@aws-sdk/client-s3'
 
-// Updating AWS configuration globally
-AWS.config.update({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION || 'ap-southeast-2', // Defaulting to 'ap-southeast-2'
+const region = 'ap-southeast-2'
+
+const s3 = new S3({
+  region,
+  credentials: {
+    accessKeyId: process.env.AWS_KEY || '',
+    secretAccessKey: process.env.AWS_KEY_SECRET || '',
+  },
 })
 
-export default AWS
+export default s3
