@@ -11,6 +11,8 @@ import * as admin from 'firebase-admin'
 import privilege from './../authenticate'
 import { Router } from 'express'
 
+import { multer } from './../server'
+
 export const dashboard = Router()
 dashboard.use(privilege)
 
@@ -271,7 +273,7 @@ dashboard.delete('/partners', async (req, res) => {
 
 // Add Game
 
-dashboard.post('/add', async (req, res) => {
+dashboard.post('/add', multer.single('thumbnail'), async (req, res) => {
   const privilege = req.headers['privilege'] as UserPrivilege
 
   const game = (await JSON.parse(req.body)) as Game
@@ -316,7 +318,7 @@ dashboard.post('/add', async (req, res) => {
             // banner: "NEED TO IMPLEMENT",
           })
 
-          await admin.firestore().doc(`gameslist/BrHoO8yuD3JdDFo8F2BC`).set(d)
+          //   await admin.firestore().doc(`gameslist/BrHoO8yuD3JdDFo8F2BC`).set(d)
         }
 
         const func2 = async () => {
