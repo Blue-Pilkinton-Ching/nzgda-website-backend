@@ -13,7 +13,7 @@ import { Router } from 'express'
 
 import { multer } from './../server'
 
-import { uploadFile, uploadFolder } from '../util/uploadToS3'
+import { deleteFolder, uploadFile, uploadFolder } from '../util/s3'
 import AdmZip from 'adm-zip'
 
 import * as fs from 'fs'
@@ -331,7 +331,6 @@ dashboard.post(
                 `${id}/thumbnail.png`,
                 files.thumbnail[0].path
               )
-              console.log('Uploaded thumbnail')
             })(),
 
             (async () => {
@@ -342,7 +341,6 @@ dashboard.post(
                   files.banner[0].path
                 )
               }
-              console.log('Uploaded banner')
             })(),
 
             (async () => {
@@ -356,7 +354,6 @@ dashboard.post(
                   `tmp/${id}/game/`,
                   `${id}/game/`
                 )
-                console.log('Uploaded game')
               }
             })(),
 
@@ -481,6 +478,51 @@ dashboard.patch('/:gameID', async (req, res) => {
 
       await Promise.all([updateGame1(), updateGame2()])
 
+      statusCode = 200
+    } catch (error) {
+      console.error(error)
+      statusCode = 500
+    }
+  } else {
+    statusCode = 401
+  }
+
+  res.status(statusCode).json({})
+})
+
+dashboard.delete('/:gameID', async (req, res) => {
+  const privilege = req.headers['privilege'] as UserPrivilege
+
+  let statusCode = 500
+
+  if (privilege === 'admin') {
+    console.log(`Deleting ${req.params.gameID}`)
+    try {
+      await Promise.allSettled([
+        (async () => {
+          const query = admin
+            .firestore()
+            .collection('games')
+            .where('id', '==', Number(req.params.gameID))
+            .limit(1)
+          await (await query.get()).docs[0].ref.delete()
+        })(),
+      ]),
+        (async () => {
+          const query = admin.firestore().collection('gameslist').limit(1)
+
+          const doc = (await query.get()).docs[0]
+          const data = doc.data() as { data: GameListItem[] }
+
+          data.data = data.data.filter(
+            (item) => item.id !== Number(req.params.gameID)
+          )
+
+          await doc.ref.set(data)
+        })(),
+        (async () => {
+          await deleteFolder('heihei-game-content', `${req.params.gameID}/`)
+        })()
       statusCode = 200
     } catch (error) {
       console.error(error)

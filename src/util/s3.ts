@@ -1,6 +1,7 @@
-import s3 from './../aws'
+import s3 from '../aws'
 import path from 'path'
 import fs from 'fs'
+import { ListObjectsV2Command } from '@aws-sdk/client-s3'
 var mime = require('mime-types')
 
 export async function uploadFile(
@@ -86,4 +87,41 @@ export async function uploadFolder(
   // Use Promise.all to upload all files/directories in parallel
   // Note: To handle rejections and continue, consider using Promise.allSettled
   await Promise.all(uploadPromises)
+}
+
+export async function deleteFolder(bucketName: string, folderPath: string) {
+  try {
+    // Ensure the folder path ends with a '/'
+    const folderPrefix = folderPath.endsWith('/')
+      ? folderPath
+      : `${folderPath}/`
+
+    // List all objects within the folder
+    const listResponse = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: bucketName,
+        Prefix: folderPrefix,
+      })
+    )
+
+    // Check if there are any contents to delete
+    if (listResponse.Contents && listResponse.Contents.length > 0) {
+      const objectsToDelete = listResponse.Contents.map((content) => ({
+        Key: content.Key,
+      }))
+
+      // Delete the objects
+      await s3.deleteObjects({
+        Bucket: bucketName,
+        Delete: {
+          Objects: objectsToDelete,
+          Quiet: false,
+        },
+      })
+    } else {
+      console.error(`${folderPath} folder is empty or does not exist.`)
+    }
+  } catch (error) {
+    console.error(`Error deleting folder: ${folderPath} `, error)
+  }
 }
