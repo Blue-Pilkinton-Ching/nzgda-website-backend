@@ -283,6 +283,7 @@ dashboard.post(
   multer.fields([
     { name: 'game', maxCount: 1 },
     { name: 'thumbnail', maxCount: 1 },
+    { name: 'banner', maxCount: 1 },
   ]),
   async (req, res) => {
     const privilege = req.headers['privilege'] as UserPrivilege
@@ -294,6 +295,7 @@ dashboard.post(
     const files = req.files as {
       thumbnail: Express.Multer.File[]
       game: Express.Multer.File[] | undefined
+      banner: Express.Multer.File[] | undefined
     }
 
     if (files.thumbnail == undefined) {
@@ -315,26 +317,35 @@ dashboard.post(
           .set({ id: latestID.id })
       } catch (error) {
         console.error(error)
-        statusCode = 500
-        res.status(statusCode).json({})
+        res.status(500).json({})
       }
 
       const id = latestID.id
 
       if (privilege === 'admin') {
         try {
-          const func1 = async () => {
-            try {
+          await Promise.all([
+            (async () => {
               await uploadFile(
                 'heihei-game-content',
                 `${id}/thumbnail.png`,
                 files.thumbnail[0].path
               )
+              console.log('Uploaded thumbnail')
+            })(),
 
-              fs.unlink(files.thumbnail[0].path, (err) => {
-                if (err) throw err
-              })
+            (async () => {
+              if (files.banner) {
+                await uploadFile(
+                  'heihei-game-content',
+                  `${id}/banner.png`,
+                  files.banner[0].path
+                )
+              }
+              console.log('Uploaded banner')
+            })(),
 
+            (async () => {
               if (files.game) {
                 var zip = new AdmZip(files.game[0].path)
 
@@ -345,61 +356,82 @@ dashboard.post(
                   `tmp/${id}/game/`,
                   `${id}/game/`
                 )
-                fs.unlink(files.game[0].path, (err) => {
-                  if (err) throw err
-                })
-                fs.rm(`tmp/${id}`, { recursive: true, force: true }, (err) => {
-                  if (err) throw err
-                })
+                console.log('Uploaded game')
               }
-            } catch (error) {
-              console.error('Error uploading game content')
-              throw error
-            }
+            })(),
 
-            const d = (
+            (async () => {
+              const d = (
+                await admin
+                  .firestore()
+                  .doc('gameslist/BrHoO8yuD3JdDFo8F2BC')
+                  .get()
+              ).data() as GamesList
+
+              d.data.push({
+                app: game.displayAppBadge,
+                id,
+                hidden: false,
+                exclude: game.exclude || '',
+                name: game.name,
+                partner: game.partner,
+                thumbnail: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/thumbnail.png`,
+                featured: false,
+                banner: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/banner.png`,
+              })
+
               await admin
                 .firestore()
-                .doc('gameslist/BrHoO8yuD3JdDFo8F2BC')
-                .get()
-            ).data() as GamesList
-
-            d.data.push({
-              app: game.displayAppBadge,
-              id,
-              hidden: false,
-              exclude: game.exclude || '',
-              name: game.name,
-              partner: game.partner,
-              thumbnail: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/thumbnail.png`,
-              featured: false,
-              // banner: "NEED TO IMPLEMENT",
-            })
-
-            await admin.firestore().doc(`gameslist/BrHoO8yuD3JdDFo8F2BC`).set(d)
-          }
-
-          const func2 = async () => {
-            admin
-              .firestore()
-              .doc(`games/${id}`)
-              .set({
-                ...game,
-                id: id,
-                ...(files.game && {
-                  url: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/game/index.html`,
-                }),
-                thumbnail: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/thumbnail.png`,
-              })
-          }
-
-          await Promise.all([func1(), func2()])
+                .doc(`gameslist/BrHoO8yuD3JdDFo8F2BC`)
+                .set(d)
+            })(),
+            (async () => {
+              await admin
+                .firestore()
+                .doc(`games/${id}`)
+                .set({
+                  ...game,
+                  id: id,
+                  ...(files.game && {
+                    url: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/game/index.html`,
+                  }),
+                  thumbnail: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/thumbnail.png`,
+                  screenshot: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/banner.png`,
+                })
+            })(),
+          ]).catch((error) => {
+            console.error(error)
+            throw error
+          })
 
           statusCode = 200
+          console.log(
+            'Finished Uploading Game',
+            `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/game/index.html`,
+            `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/thumbnail.png`,
+            `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/banner.png`
+          )
         } catch (error) {
           console.error(error)
           statusCode = 500
         }
+      }
+
+      fs.unlink(files.thumbnail[0].path, (err) => {
+        if (err) throw err
+      })
+      if (files.game) {
+        fs.unlink(files.game[0].path, (err) => {
+          if (err) throw err
+        })
+        fs.rm(`tmp/${id}`, { recursive: true, force: true }, (err) => {
+          if (err) throw err
+        })
+      }
+      if (files.banner) {
+        fs.unlink(files.banner[0].path, (err) => {
+          if (err) throw err
+        })
       }
     } else {
       statusCode = 401
