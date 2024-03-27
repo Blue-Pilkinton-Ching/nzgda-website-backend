@@ -13,8 +13,10 @@ import { Router } from 'express'
 
 import { multer } from './../server'
 
-import upload from '../util/uploadToS3'
-import { error } from 'console'
+import { uploadFile, uploadFolder } from '../util/uploadToS3'
+import AdmZip from 'adm-zip'
+
+import * as fs from 'fs'
 
 export const dashboard = Router()
 dashboard.use(privilege)
@@ -276,93 +278,136 @@ dashboard.delete('/partners', async (req, res) => {
 
 // Add Game
 
-dashboard.post('/add', multer.single('thumbnail'), async (req, res) => {
-  const privilege = req.headers['privilege'] as UserPrivilege
+dashboard.post(
+  '/add',
+  multer.fields([
+    { name: 'game', maxCount: 1 },
+    { name: 'thumbnail', maxCount: 1 },
+  ]),
+  async (req, res) => {
+    const privilege = req.headers['privilege'] as UserPrivilege
 
-  const game = JSON.parse(req.body.data) as Game
+    const game = JSON.parse(req.body.data) as Game
 
-  let statusCode = 500
+    let statusCode = 500
 
-  if (req.file == undefined) {
-    res.status(400).json({})
-    return
-  }
-
-  if (privilege === 'admin' || privilege === 'privileged') {
-    const latestID = (
-      await admin.firestore().doc('gameslist/latest-id').get()
-    ).data() as { id: number }
-
-    latestID.id += 1
-
-    try {
-      await admin
-        .firestore()
-        .doc('gameslist/latest-id')
-        .set({ id: latestID.id })
-    } catch (error) {
-      console.error(error)
-      statusCode = 500
-      res.status(statusCode).json({})
+    const files = req.files as {
+      thumbnail: Express.Multer.File[]
+      game: Express.Multer.File[] | undefined
     }
 
-    const id = latestID.id
+    if (files.thumbnail == undefined) {
+      res.status(400).json({ error: 'No thumbnail provided' })
+      return
+    }
 
-    if (privilege === 'admin') {
+    if (privilege === 'admin' || privilege === 'privileged') {
+      const latestID = (
+        await admin.firestore().doc('gameslist/latest-id').get()
+      ).data() as { id: number }
+
+      latestID.id += 1
+
       try {
-        const func1 = async () => {
-          let thumbnailURL = ''
-          try {
-            thumbnailURL = (await upload(
-              'heihei-game-content',
-              `${id}/thumbnail.png`,
-              req.file?.path as string
-            )) as string
-          } catch (error) {
-            console.error('Error uploading thumbnail')
-            throw error
-          }
-
-          const d = (
-            await admin.firestore().doc('gameslist/BrHoO8yuD3JdDFo8F2BC').get()
-          ).data() as GamesList
-
-          d.data.push({
-            app: game.displayAppBadge,
-            id,
-            hidden: false,
-            exclude: game.exclude || '',
-            name: game.name,
-            partner: game.partner,
-            thumbnail: thumbnailURL,
-            featured: false,
-            // banner: "NEED TO IMPLEMENT",
-          })
-
-          await admin.firestore().doc(`gameslist/BrHoO8yuD3JdDFo8F2BC`).set(d)
-        }
-
-        const func2 = async () => {
-          admin
-            .firestore()
-            .doc(`games/${id}`)
-            .set({ ...game, id: id })
-        }
-
-        await Promise.all([func1(), func2()])
-
-        statusCode = 200
+        await admin
+          .firestore()
+          .doc('gameslist/latest-id')
+          .set({ id: latestID.id })
       } catch (error) {
         console.error(error)
         statusCode = 500
+        res.status(statusCode).json({})
       }
-    }
-  } else {
-    statusCode = 401
-  }
 
-  res.status(statusCode).json({})
-})
+      const id = latestID.id
+
+      if (privilege === 'admin') {
+        try {
+          const func1 = async () => {
+            try {
+              await uploadFile(
+                'heihei-game-content',
+                `${id}/thumbnail.png`,
+                files.thumbnail[0].path
+              )
+
+              fs.unlink(files.thumbnail[0].path, (err) => {
+                if (err) throw err
+              })
+
+              if (files.game) {
+                var zip = new AdmZip(files.game[0].path)
+
+                zip.extractAllTo(`tmp/${id}/game`, true)
+
+                await uploadFolder(
+                  'heihei-game-content',
+                  `tmp/${id}/game/`,
+                  `${id}/game/`
+                )
+                fs.unlink(files.game[0].path, (err) => {
+                  if (err) throw err
+                })
+                fs.rm(`tmp/${id}`, { recursive: true, force: true }, (err) => {
+                  if (err) throw err
+                })
+              }
+            } catch (error) {
+              console.error('Error uploading game content')
+              throw error
+            }
+
+            const d = (
+              await admin
+                .firestore()
+                .doc('gameslist/BrHoO8yuD3JdDFo8F2BC')
+                .get()
+            ).data() as GamesList
+
+            d.data.push({
+              app: game.displayAppBadge,
+              id,
+              hidden: false,
+              exclude: game.exclude || '',
+              name: game.name,
+              partner: game.partner,
+              thumbnail: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/thumbnail.png`,
+              featured: false,
+              // banner: "NEED TO IMPLEMENT",
+            })
+
+            await admin.firestore().doc(`gameslist/BrHoO8yuD3JdDFo8F2BC`).set(d)
+          }
+
+          const func2 = async () => {
+            admin
+              .firestore()
+              .doc(`games/${id}`)
+              .set({
+                ...game,
+                id: id,
+                ...(files.game && {
+                  url: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/game/index.html`,
+                }),
+                thumbnail: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/thumbnail.png`,
+              })
+          }
+
+          await Promise.all([func1(), func2()])
+
+          statusCode = 200
+        } catch (error) {
+          console.error(error)
+          statusCode = 500
+        }
+      }
+    } else {
+      statusCode = 401
+    }
+
+    res.status(statusCode).json({})
+  }
+)
 
 // Game Settings
 

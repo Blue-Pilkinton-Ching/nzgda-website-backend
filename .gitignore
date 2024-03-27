@@ -33,4 +33,5 @@ next-env.d.ts
 firebase.json
 dist
 uploads/*
+tmp/*
 ```
