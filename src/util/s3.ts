@@ -118,10 +118,37 @@ export async function deleteFolder(bucketName: string, folderPath: string) {
           Quiet: false,
         },
       })
-    } else {
-      console.error(`${folderPath} folder is empty or does not exist.`)
     }
   } catch (error) {
     console.error(`Error deleting folder: ${folderPath} `, error)
   }
+}
+
+export async function overriteFolder(
+  bucketName: string,
+  folderPath: string,
+  key: string
+) {
+  try {
+    await deleteFolder(bucketName, key)
+  } catch (error) {
+    console.error('Error deleting folder', error)
+  }
+  await uploadFolder(bucketName, folderPath, key)
+}
+
+export async function overriteFile(
+  bucketName: string,
+  filepath: string,
+  key: string
+) {
+  try {
+    await s3.deleteObject({
+      Bucket: bucketName,
+      Key: key,
+    })
+  } catch (error) {
+    console.error('Error deleting object', error)
+  }
+  await uploadFile(bucketName, key, filepath)
 }

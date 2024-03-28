@@ -13,7 +13,13 @@ import { Router } from 'express'
 
 import { multer } from './../server'
 
-import { deleteFolder, uploadFile, uploadFolder } from '../util/s3'
+import {
+  deleteFolder,
+  overriteFile,
+  overriteFolder,
+  uploadFile,
+  uploadFolder,
+} from '../util/s3'
 import AdmZip from 'adm-zip'
 
 import * as fs from 'fs'
@@ -374,7 +380,9 @@ dashboard.post(
                 partner: game.partner,
                 thumbnail: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/thumbnail.png`,
                 featured: false,
-                banner: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/banner.png`,
+                ...(files.banner && {
+                  banner: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/banner.png`,
+                }),
               })
 
               await admin
@@ -393,7 +401,9 @@ dashboard.post(
                     url: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/game/index.html`,
                   }),
                   thumbnail: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/thumbnail.png`,
-                  screenshot: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/banner.png`,
+                  ...(files.banner && {
+                    screenshot: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/banner.png`,
+                  }),
                 })
             })(),
           ]).catch((error) => {
@@ -402,12 +412,6 @@ dashboard.post(
           })
 
           statusCode = 200
-          console.log(
-            'Finished Uploading Game',
-            `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/game/index.html`,
-            `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/thumbnail.png`,
-            `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/banner.png`
-          )
         } catch (error) {
           console.error(error)
           statusCode = 500
@@ -440,55 +444,132 @@ dashboard.post(
 
 // Game Settings
 
-dashboard.patch('/:gameID', async (req, res) => {
-  const privilege = req.headers['privilege'] as UserPrivilege
+dashboard.patch(
+  '/:gameID',
+  multer.fields([
+    { name: 'game', maxCount: 1 },
+    { name: 'thumbnail', maxCount: 1 },
+    { name: 'banner', maxCount: 1 },
+  ]),
+  async (req, res) => {
+    const privilege = req.headers['privilege'] as UserPrivilege
 
-  const gameChanges = await JSON.parse(req.body)
+    const gameChanges = await JSON.parse(req.body.data)
 
-  let statusCode = 500
-
-  if (privilege === 'admin') {
-    try {
-      const query = admin
-        .firestore()
-        .collection('games')
-        .where('id', '==', Number(req.params.gameID))
-        .limit(1)
-      const query2 = admin.firestore().collection('gameslist').limit(1)
-
-      const updateGame1 = async () => {
-        await (await query.get()).docs[0].ref.update(gameChanges)
-      }
-      const updateGame2 = async () => {
-        const doc = (await query2.get()).docs[0]
-        const data = doc.data() as { data: GameListItem[] }
-
-        const item =
-          data.data[
-            data.data.findIndex((item) => item.id === Number(req.params.gameID))
-          ]
-
-        item.name = gameChanges.name
-        item.partner = gameChanges.partner
-        item.exclude = gameChanges.exclude
-        item.app = gameChanges.displayAppBadge
-
-        await doc.ref.set(data)
-      }
-
-      await Promise.all([updateGame1(), updateGame2()])
-
-      statusCode = 200
-    } catch (error) {
-      console.error(error)
-      statusCode = 500
+    const files = req.files as {
+      thumbnail: Express.Multer.File[] | undefined
+      game: Express.Multer.File[] | undefined
+      banner: Express.Multer.File[] | undefined
     }
-  } else {
-    statusCode = 401
-  }
 
-  res.status(statusCode).json({})
-})
+    let statusCode = 500
+
+    if (privilege === 'admin') {
+      try {
+        await Promise.allSettled([
+          (async () => {
+            await (
+              await admin
+                .firestore()
+                .collection('games')
+                .where('id', '==', Number(req.params.gameID))
+                .limit(1)
+                .get()
+            ).docs[0].ref.update({
+              ...gameChanges,
+              ...(files.game && {
+                url: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${req.params.gameID}/game/index.html`,
+              }),
+              ...(files.banner && {
+                screenshot: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${req.params.gameID}/banner.png`,
+              }),
+            })
+          })(),
+          (async () => {
+            const doc = (
+              await admin.firestore().collection('gameslist').limit(1).get()
+            ).docs[0]
+            const data = doc.data() as { data: GameListItem[] }
+
+            const item =
+              data.data[
+                data.data.findIndex(
+                  (item) => item.id === Number(req.params.gameID)
+                )
+              ]
+
+            item.name = gameChanges.name
+            item.partner = gameChanges.partner
+            item.exclude = gameChanges.exclude
+            item.app = gameChanges.displayAppBadge
+            if (files.banner) {
+              item.banner = `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${req.params.gameID}/banner.png`
+            }
+
+            await doc.ref.set(data)
+          })(),
+          (async () => {
+            if (files.thumbnail) {
+              await overriteFile(
+                'heihei-game-content',
+                files.thumbnail[0].path,
+                `${req.params.gameID}/thumbnail.png`
+              )
+            }
+          })(),
+
+          (async () => {
+            if (files.banner) {
+              await overriteFile(
+                'heihei-game-content',
+                files.banner[0].path,
+                `${req.params.gameID}/banner.png`
+              )
+            }
+          })(),
+
+          (async () => {
+            if (files.game) {
+              var zip = new AdmZip(files.game[0].path)
+
+              zip.extractAllTo(`tmp/${req.params.gameID}/game`, true)
+
+              await overriteFolder(
+                'heihei-game-content',
+                `tmp/${req.params.gameID}/game/`,
+                `${req.params.gameID}/game/`
+              )
+            }
+          })(),
+        ])
+
+        statusCode = 200
+      } catch (error) {
+        console.error(error)
+        statusCode = 500
+      }
+
+      if (files.thumbnail) {
+        fs.unlink(files.thumbnail[0].path, (err) => {})
+      }
+      if (files.game) {
+        fs.unlink(files.game[0].path, (err) => {})
+        fs.rm(
+          `tmp/${req.params.gameID}`,
+          { recursive: true, force: true },
+          (err) => {}
+        )
+      }
+      if (files.banner) {
+        fs.unlink(files.banner[0].path, (err) => {})
+      }
+    } else {
+      statusCode = 401
+    }
+
+    res.status(statusCode).json({})
+  }
+)
 
 dashboard.delete('/:gameID', async (req, res) => {
   const privilege = req.headers['privilege'] as UserPrivilege
