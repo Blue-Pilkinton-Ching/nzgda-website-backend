@@ -33,7 +33,7 @@ dashboard.get('/', async (req, res) => {
   const privilege = req.headers['privilege'] as UserPrivilege
   let body: AdminDashboard | {} = {}
   let statusCode = 500
-  if (privilege === 'admin') {
+  if (privilege === 'admin' || privilege === 'privileged') {
     let users
     let gameslist
     let authRequests
@@ -58,13 +58,23 @@ dashboard.get('/', async (req, res) => {
         (users = (
           await admin.firestore().doc('users/privileged').get()
         ).data() as UserTypes)
-      await Promise.all([func1(), func2(), func3()])
+
+      if (privilege === 'admin') {
+        await Promise.allSettled([func1(), func2(), func3()])
+      } else {
+        await Promise.allSettled([func1(), func3()])
+      }
+
       statusCode = 200
     } catch (error) {
       console.error(error)
       statusCode = 500
     }
-    body = { users, gameslist, authRequests, partners }
+    if (privilege === 'admin') {
+      body = { users, gameslist, authRequests, partners }
+    } else {
+      body = { gameslist, users }
+    }
   } else {
     statusCode = 401
   }
@@ -146,6 +156,33 @@ dashboard.delete('/users', async (req, res) => {
   }
 
   res.status(statusCode).json({})
+})
+
+dashboard.get('/users', async (req, res) => {
+  const privilege = req.headers['privilege'] as UserPrivilege
+
+  let statusCode = 500
+
+  let body = {}
+
+  if (privilege === 'admin' || privilege === 'privileged') {
+    try {
+      const users = (
+        await admin.firestore().doc('users/privileged').get()
+      ).data() as UserTypes
+
+      body = users
+
+      statusCode = 200
+    } catch (error) {
+      console.error(error)
+      statusCode = 500
+    }
+  } else {
+    statusCode = 401
+  }
+
+  res.status(statusCode).json(body)
 })
 
 // Requests
