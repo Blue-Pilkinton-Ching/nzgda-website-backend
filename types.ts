@@ -23,6 +23,7 @@ export interface Game {
   updatedAt?: string
   playableOnHeihei?: boolean
   displayAppBadge?: boolean
+  educational: boolean
 }
 
 export interface UserTypes {
@@ -60,6 +61,7 @@ export interface GameListItem {
   exclude: string
   app?: boolean
   featured: boolean
+  educational: boolean
   banner?: string
 }
 

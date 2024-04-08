@@ -319,7 +319,7 @@ dashboard.delete('/partners', async (req, res) => {
   res.status(statusCode).json({})
 })
 
-// Add Game
+// Games
 
 dashboard.post(
   '/add',
@@ -420,6 +420,7 @@ dashboard.post(
                 ...(files.banner && {
                   banner: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/banner.png`,
                 }),
+                educational: game.educational || false,
               })
 
               await admin
@@ -478,8 +479,6 @@ dashboard.post(
     res.status(statusCode).json({})
   }
 )
-
-// Game Settings
 
 dashboard.patch(
   '/:gameID',
@@ -652,6 +651,8 @@ dashboard.delete('/:gameID', async (req, res) => {
 
   res.status(statusCode).json({})
 })
+
+// Game Settings
 
 dashboard.patch('/:gameID/visibility', async (req, res) => {
   const privilege = req.headers['privilege'] as UserPrivilege
