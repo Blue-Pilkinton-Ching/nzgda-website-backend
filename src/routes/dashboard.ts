@@ -663,7 +663,7 @@ dashboard.patch('/:gameID/visibility', async (req, res) => {
 
   let statusCode = 500
 
-  if (privilege === 'admin') {
+  if (privilege === 'admin' || privilege === 'privileged') {
     try {
       const query = admin.firestore().collection('gameslist').limit(1)
 
