@@ -538,6 +538,8 @@ dashboard.patch(
             item.partner = gameChanges.partner
             item.exclude = gameChanges.exclude
             item.app = gameChanges.displayAppBadge
+            item.educational = gameChanges.educational
+
             if (files.banner) {
               item.banner = `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${req.params.gameID}/banner.png`
             }
