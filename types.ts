@@ -61,8 +61,9 @@ export interface GameListItem {
   exclude: string
   app?: boolean
   featured: boolean
-  educational: boolean
+  educational?: boolean
   banner?: string
+  approved?: boolean
 }
 
 export interface Partner {

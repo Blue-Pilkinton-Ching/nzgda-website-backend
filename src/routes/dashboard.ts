@@ -365,95 +365,91 @@ dashboard.post(
 
       const id = latestID.id
 
-      if (privilege === 'admin') {
-        try {
-          await Promise.all([
-            (async () => {
+      try {
+        await Promise.all([
+          (async () => {
+            await uploadFile(
+              'heihei-game-content',
+              `${id}/thumbnail.png`,
+              files.thumbnail[0].path
+            )
+          })(),
+
+          (async () => {
+            if (files.banner) {
               await uploadFile(
                 'heihei-game-content',
-                `${id}/thumbnail.png`,
-                files.thumbnail[0].path
+                `${id}/banner.png`,
+                files.banner[0].path
               )
-            })(),
+            }
+          })(),
 
-            (async () => {
-              if (files.banner) {
-                await uploadFile(
-                  'heihei-game-content',
-                  `${id}/banner.png`,
-                  files.banner[0].path
-                )
-              }
-            })(),
+          (async () => {
+            if (files.game) {
+              var zip = new AdmZip(files.game[0].path)
 
-            (async () => {
-              if (files.game) {
-                var zip = new AdmZip(files.game[0].path)
+              zip.extractAllTo(`tmp/${id}/game`, true)
 
-                zip.extractAllTo(`tmp/${id}/game`, true)
+              await uploadFolder(
+                'heihei-game-content',
+                `tmp/${id}/game/`,
+                `${id}/game/`
+              )
+            }
+          })(),
 
-                await uploadFolder(
-                  'heihei-game-content',
-                  `tmp/${id}/game/`,
-                  `${id}/game/`
-                )
-              }
-            })(),
+          (async () => {
+            const d = (
+              await admin
+                .firestore()
+                .doc('gameslist/BrHoO8yuD3JdDFo8F2BC')
+                .get()
+            ).data() as GamesList
 
-            (async () => {
-              const d = (
-                await admin
-                  .firestore()
-                  .doc('gameslist/BrHoO8yuD3JdDFo8F2BC')
-                  .get()
-              ).data() as GamesList
+            d.data.push({
+              app: game.displayAppBadge,
+              id,
+              hidden: false,
+              exclude: game.exclude || '',
+              name: game.name,
+              partner: game.partner,
+              thumbnail: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/thumbnail.png`,
+              featured: false,
+              ...(files.banner && {
+                banner: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/banner.png`,
+              }),
+              educational: game.educational || false,
+              approved: false,
+            })
 
-              d.data.push({
-                app: game.displayAppBadge,
-                id,
-                hidden: false,
-                exclude: game.exclude || '',
-                name: game.name,
-                partner: game.partner,
-                thumbnail: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/thumbnail.png`,
-                featured: false,
-                ...(files.banner && {
-                  banner: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/banner.png`,
+            await admin.firestore().doc(`gameslist/BrHoO8yuD3JdDFo8F2BC`).set(d)
+          })(),
+          (async () => {
+            await admin
+              .firestore()
+              .doc(`games/${id}`)
+              .set({
+                ...game,
+                id: id,
+                ...(files.game && {
+                  url: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/game/index.html`,
                 }),
-                educational: game.educational || false,
+                thumbnail: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/thumbnail.png`,
+                ...(files.banner && {
+                  screenshot: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/banner.png`,
+                }),
               })
-
-              await admin
-                .firestore()
-                .doc(`gameslist/BrHoO8yuD3JdDFo8F2BC`)
-                .set(d)
-            })(),
-            (async () => {
-              await admin
-                .firestore()
-                .doc(`games/${id}`)
-                .set({
-                  ...game,
-                  id: id,
-                  ...(files.game && {
-                    url: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/game/index.html`,
-                  }),
-                  thumbnail: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/thumbnail.png`,
-                  ...(files.banner && {
-                    screenshot: `https://heihei-game-content.s3.ap-southeast-2.amazonaws.com/${id}/banner.png`,
-                  }),
-                })
-            })(),
-          ]).catch((error) => {
-            console.error(error)
-            throw error
-          })
-
-          statusCode = 200
-        } catch (error) {
+          })(),
+        ]).catch((error) => {
           console.error(error)
-          statusCode = 500
-        }
+          throw error
+        })
+
+        statusCode = 200
+      } catch (error) {
+        console.error(error)
+        statusCode = 500
       }
 
       fs.unlink(files.thumbnail[0].path, (err) => {
@@ -710,6 +706,36 @@ dashboard.patch('/:gameID/feature', async (req, res) => {
         }
         return x
       })
+
+      await doc.ref.set(data)
+
+      statusCode = 200
+    } catch (error) {
+      console.error(error)
+      statusCode = 500
+    }
+  } else {
+    statusCode = 401
+  }
+
+  res.status(statusCode).json({})
+})
+
+dashboard.patch('/:gameID/approve', async (req, res) => {
+  const privilege = req.headers['privilege'] as UserPrivilege
+
+  let statusCode = 500
+
+  if (privilege === 'admin' || privilege === 'privileged') {
+    try {
+      const query = admin.firestore().collection('gameslist').limit(1)
+
+      const doc = (await query.get()).docs[0]
+      const data = doc.data() as { data: GameListItem[] }
+
+      data.data[
+        data.data.findIndex((item) => item.id === Number(req.params.gameID))
+      ].approved = true
 
       await doc.ref.set(data)
 
