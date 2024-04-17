@@ -215,42 +215,6 @@ dashboard.delete('/requests', async (req, res) => {
 
 // Partners
 
-dashboard.patch('/partners', async (req, res) => {
-  const privilege = req.headers['privilege'] as UserPrivilege
-
-  const reqBody = await JSON.parse(req.body)
-
-  let statusCode = 500
-
-  if (privilege === 'admin') {
-    try {
-      const updateData = async () => {
-        const query = admin.firestore().collection('gameslist').limit(1)
-
-        const doc = (await query.get()).docs[0]
-        const data = doc.data() as GamesList
-
-        data.partners[
-          data.partners.findIndex((item) => item.name === reqBody.name)
-        ].hidden = reqBody.hidden
-
-        await doc.ref.set(data)
-      }
-
-      await updateData()
-
-      statusCode = 200
-    } catch (error) {
-      console.error(error)
-      statusCode = 500
-    }
-  } else {
-    statusCode = 401
-  }
-
-  res.status(statusCode).json({})
-})
-
 dashboard.post('/partners', async (req, res) => {
   const privilege = req.headers['privilege'] as UserPrivilege
 
@@ -285,6 +249,78 @@ dashboard.post('/partners', async (req, res) => {
   res.status(statusCode).json({})
 })
 
+dashboard.patch('/partners/:partner', async (req, res) => {
+  const privilege = req.headers['privilege'] as UserPrivilege
+
+  const reqBody = await JSON.parse(req.body)
+
+  console.log(req.params.partner)
+
+  let statusCode = 500
+
+  if (privilege === 'admin') {
+    try {
+      Promise.allSettled([
+        (async () => {
+          const query = admin.firestore().collection('gameslist').limit(1)
+
+          const doc = (await query.get()).docs[0]
+          const data = doc.data() as GamesList
+
+          let index = data.partners.findIndex(
+            (item) => item.name === req.params.partner
+          )
+
+          if (index === -1) {
+            throw new Error(`Invalid Partner ${index}`)
+          }
+
+          data.data = data.data.map((element) => {
+            if (element.partner === req.params.partner) {
+              return { ...element, partner: reqBody.partner }
+            } else {
+              return { ...element }
+            }
+          }) as GameListItem[]
+
+          data.partners[index].name = reqBody.partner
+
+          const query2 = admin
+            .firestore()
+            .collection('games')
+            .where('partner', '==', req.params.partner)
+            .limit(100)
+
+          Promise.allSettled([
+            (async () => {
+              await doc.ref.set(data)
+            })(),
+            async () => {
+              const docs = (await query2.get()).docs
+
+              Promise.allSettled(
+                docs.map((element) => {
+                  return async () =>
+                    element.ref.update({ partner: reqBody.partner })
+                })
+              )
+            },
+          ])
+        })(),
+      ])
+
+      statusCode = 200
+    } catch (error) {
+      console.error(error)
+      statusCode = 500
+    }
+  } else {
+    statusCode = 401
+  }
+
+  res.status(statusCode).json({})
+})
+
 dashboard.delete('/partners', async (req, res) => {
   const privilege = req.headers['privilege'] as UserPrivilege
 
@@ -301,6 +337,42 @@ dashboard.delete('/partners', async (req, res) => {
         const data = doc.data() as GamesList
 
         data.partners = data.partners.filter((item) => item.name !== reqBody)
+
+        await doc.ref.set(data)
+      }
+
+      await updateData()
+
+      statusCode = 200
+    } catch (error) {
+      console.error(error)
+      statusCode = 500
+    }
+  } else {
+    statusCode = 401
+  }
+
+  res.status(statusCode).json({})
+})
+
+dashboard.patch('/partners/visibility', async (req, res) => {
+  const privilege = req.headers['privilege'] as UserPrivilege
+
+  const reqBody = await JSON.parse(req.body)
+
+  let statusCode = 500
+
+  if (privilege === 'admin') {
+    try {
+      const updateData = async () => {
+        const query = admin.firestore().collection('gameslist').limit(1)
+
+        const doc = (await query.get()).docs[0]
+        const data = doc.data() as GamesList
+
+        data.partners[
+          data.partners.findIndex((item) => item.name === reqBody.name)
+        ].hidden = reqBody.hidden
 
         await doc.ref.set(data)
       }
